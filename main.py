@@ -33,12 +33,14 @@ def query():
 
     # the DNSKEY should be self signed, validate it
     name = dns.name.from_text('com.')
+
     try:
-        dns.dnssec.validate(answer[0], answer[1], {name: answer[0]})
+        valid = dns.dnssec.validate(answer[0], answer[1], {name: answer[0]})
     except dns.dnssec.ValidationFailure:
         print("BE SUSPICIOUS THIS DNSKEY IS NOT SELF SIGNED")
     else:
         print("WE'RE GOOD, THERE'S A VALID DNSSEC SELF-SIGNED KEY FOR the query")
+        print("DATA: ", valid)
 
 if __name__ == '__main__':
     query()
