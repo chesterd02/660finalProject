@@ -7,7 +7,7 @@ import dns.rdatatype
 
 def query():
     # get nameservers for target domain
-    response = dns.resolver.resolve('example.com.',dns.rdatatype.NS)
+    response = dns.resolver.resolve('dell.com.',dns.rdatatype.NS)
 
     # we'll use the first nameserver in this example
     nsname = response.rrset[0].to_text() # name
@@ -32,7 +32,7 @@ def query():
         print ("SOMETHING WENT WRONG THE ANSWER SHOULD HAVE 2 THINGS IN IT")
 
     # the DNSKEY should be self signed, validate it
-    name = dns.name.from_text('example.com.')
+    name = dns.name.from_text('dell.com.')
     try:
         dns.dnssec.validate(answer[0],answer[1],{name:answer[0]})
     except dns.dnssec.ValidationFailure:
