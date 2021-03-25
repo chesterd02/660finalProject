@@ -5,6 +5,22 @@ import dns.message
 import dns.resolver
 import dns.rdatatype
 import csv
+import re
+import json
+
+def analyzeAlgorithm(answer):
+    print (answer)
+    for RRSet in answer:
+        print (json.dumps(RRSet))
+        # x = re.search(, str(RRSet))
+        print (RRSet.items['rdata'])
+        #https://dnspython.readthedocs.io/en/stable/dnssec.html
+        # algorithm_to_text?
+        if (RRSet.items["rdata"] != None):
+            if RRSet.items["rdata"].contains("13"):
+                print("algorithm 13")
+        else: print("error")
+    return
 
 def query(domain):
     # get nameservers for target domain
@@ -32,10 +48,16 @@ def query(domain):
     # answer should contain two RRSET: DNSKEY and RRSIG(DNSKEY)
 
     answer = response.answer
-    # print("answer: ", answer)
+    print("answer: ", answer)
+    # 257 is the key signing key (KSK)
+    # 256 is the ZSK
+
     if len(answer) != 2:
         #print("SOMETHING WENT WRONG THE ANSWER SHOULD HAVE 2 THINGS IN IT")
         return False
+
+    # Look at the algorithm being used
+    analyzeAlgorithm(answer)
 
     # the DNSKEY should be self signed, validate it
     name = dns.name.from_text(domain)
@@ -54,15 +76,17 @@ def parse_csv():
         dialect = csv.Sniffer().sniff(csvfile.read(1024))
         csvfile.seek(0)
         reader = csv.reader(csvfile, dialect)
-        test_number_to_parse = 100                     # This number is used for testing on a smaller set of data
+        test_number_to_parse = 100                    # This number is used for testing on a smaller set of data
         domain = next(reader)
-
         # for row in reader:
         #     do stuff with row
         response = []
 
         while int(domain[0]) != test_number_to_parse:
             # print ("line: ", domain[0])
+            if int(domain[0]) < 40:
+                domain = next(reader)
+                continue
             response.append(query(domain[1]))
             domain = next(reader)
         return response
