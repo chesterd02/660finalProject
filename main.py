@@ -5,8 +5,6 @@ import dns.message
 import dns.resolver
 import dns.rdatatype
 import csv
-import re
-import json
 import pickle
 
 class myObject:
@@ -36,13 +34,17 @@ class myObject:
 
 def getquerydata(domain):
     # domain = 'salesforce.com'
-    ds_response = dns.resolver.resolve(domain, dns.rdatatype.DS)
-    soa_response = dns.resolver.resolve(domain, dns.rdatatype.SOA)
-    a_response = dns.resolver.resolve(domain, dns.rdatatype.A)
-    ns_response = dns.resolver.resolve(domain, dns.rdatatype.NS)
+    try:
+        ds_response = dns.resolver.resolve(domain, dns.rdatatype.DS)
+        soa_response = dns.resolver.resolve(domain, dns.rdatatype.SOA)
+        a_response = dns.resolver.resolve(domain, dns.rdatatype.A)
+        ns_response = dns.resolver.resolve(domain, dns.rdatatype.NS)
+    except:
+        return None
 
     nsname = ns_response.rrset[0].to_text()
     ds_id = str.split(ds_response.rrset[0].to_text(),' ')[0]
+    print ("**DS_ID: ", ds_id)
 
     response = dns.resolver.resolve(nsname, dns.rdatatype.A)
     nsaddr = response.rrset[0].to_text()  # IPv4
@@ -67,7 +69,7 @@ def getquerydata(domain):
     except dns.dnssec.ValidationFailure:
         print("BE SUSPICIOUS THIS DNSKEY IS NOT SELF SIGNED")
         return None
-    print("WE'RE GOOD, THERE'S A VALID DNSSEC SELF-SIGNED KEY FOR THE QUERY")
+    # print("WE'RE GOOD, THERE'S A VALID DNSSEC SELF-SIGNED KEY FOR THE QUERY")
 
     keys = {name: answer[0]}
     for rrsigset in answer[1]:
@@ -124,7 +126,7 @@ def parse_csv():
 
 if __name__ == '__main__':
     list = parse_csv()
-    total = sum(1 for x in list if x==True)
+    total = sum(1 for x in list if x!=None)
     print ("List: ", list)
     print ("Total DNSSEC: ", total)
 
