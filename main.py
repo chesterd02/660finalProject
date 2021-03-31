@@ -35,7 +35,7 @@ class myObject:
         self.key_id = key_id
 
 def getquerydata(domain):
-    domain = 'salesforce.com'
+    # domain = 'salesforce.com'
     ds_response = dns.resolver.resolve(domain, dns.rdatatype.DS)
     soa_response = dns.resolver.resolve(domain, dns.rdatatype.SOA)
     a_response = dns.resolver.resolve(domain, dns.rdatatype.A)
@@ -110,16 +110,16 @@ def parse_csv():
         domain = next(reader)
         # for row in reader:
         #     do stuff with row
-        response = []
+        responses = []
 
         while int(domain[0]) != test_number_to_parse:
             # print ("line: ", domain[0])
             if int(domain[0]) < 40:
                 domain = next(reader)
                 continue
-            response.append(getquerydata(domain[1]))
+            responses.append(getquerydata(domain[1]))
             domain = next(reader)
-        return response
+        return responses
 
 
 if __name__ == '__main__':
@@ -128,32 +128,6 @@ if __name__ == '__main__':
     print ("List: ", list)
     print ("Total DNSSEC: ", total)
 
-
-
-class myObject:
-    def __init__(self,
-                 domain=None,
-                 ds_response=None,
-                 soa_response=None,
-                 a_response=None,
-                 ns_response=None,
-                 response=None,
-                 ds_id=None,
-                 answer=None,
-                 algorithm_number=None,
-                 algorithm=None,
-                 key_id=None):
-        self.domain = domain
-        self.ds_response = ds_response
-        self.soa_response = soa_response
-        self.a_response = a_response
-        self.ns_response = ns_response
-        self.response = response
-        self.ds_id = ds_id
-        self.answer = answer
-        self.algorithm_number = algorithm_number
-        self.algorithm = algorithm
-        self.key_id = key_id
 
 
 
