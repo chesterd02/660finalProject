@@ -31,18 +31,26 @@ def getKey(soa_string, domain):
             return soa_key
         i+=1
     return None
+
 def getquerydata(domain):
-    # domain = 'nih.gov'
+    # domain = 'salesforce.com'
+    key_id = None
+    algorithm_number = None
+    algorithm = None
+    response = None
+    soa_response = None
+
     try:
         ds_response = dns.resolver.resolve(domain, dns.rdatatype.DS)  #Delegation Signer (KSK)
         ns_response = dns.resolver.resolve(domain, dns.rdatatype.NS)
     except:
         return None
 
+    print ("****DOMAIN****:  ", domain)
     nsname = ns_response.rrset[0].to_text()
     ds_id = str.split(ds_response.rrset[0].to_text(),' ')[0]
     print ("**DS_ID: ", ds_id)
-
+    # USE GOOGLE AS DEFAULT NSADDR ADDRESS 8.8.8.8
     response = dns.resolver.resolve(nsname, dns.rdatatype.A)
     nsaddr = response.rrset[0].to_text()  # IPv4
     # get DNSKEY for zone
@@ -63,18 +71,26 @@ def getquerydata(domain):
     print ("Key to sign SOA: ", soa_key)
 
     name = dns.name.from_text(domain)
-    key_id = None
-    algorithm_number = None
-    algorithm = None
+
     if len(answer) != 2:
         print ("DOMAIN AND NSNAME DIDNT HAVE 2 TINGS IN ANSWER: ", domain, " ", nsname)
-        #print("SOMETHING WENT WRONG THE ANSWER SHOULD HAVE 2 THINGS IN IT")
-        return myObject(domain,
-                 ds_id,
-                 soa_key,
-                 key_id,
-                 algorithm_number,
-                 algorithm)
+        try:
+            response = dns.query.tcp(request, nsaddr, timeout=10)
+            soa_response = dns.query.tcp(soa_request, nsaddr, timeout=10)
+            answer = response.answer
+            soa_answer = soa_response.answer
+            soa_signer = soa_answer[1].to_text()
+            soa_string = str.split(soa_signer, ' ')
+            soa_key = getKey(soa_string, domain)
+            print("Key to sign SOA: ", soa_key)
+        except:
+            print("SOMETHING WENT WRONG THE ANSWER SHOULD HAVE 2 THINGS IN IT")
+            return myObject(domain,
+                     ds_id,
+                     soa_key,
+                     key_id,
+                     algorithm_number,
+                     algorithm)
     # the DNSKEY should be self signed, validate it
     try:
         dns.dnssec.validate(answer[0], answer[1], {name: answer[0]})
@@ -82,7 +98,7 @@ def getquerydata(domain):
         print("BE SUSPICIOUS THIS DNSKEY IS NOT SELF SIGNED")
         # return None
     # print("WE'RE GOOD, THERE'S A VALID DNSSEC SELF-SIGNED KEY FOR THE QUERY")
-    print("DOMAIN AND NSNAME WITH DNSSEC: ", domain, " ", nsname)
+    # print("DOMAIN AND NSNAME WITH DNSSEC: ", domain, " ", nsname)
     keys = {name: answer[0]}
     for rrsigset in answer[1]:  # can i make this be answer[0]?
         if isinstance(rrsigset, tuple):
@@ -136,7 +152,7 @@ def parse_csv():
 if __name__ == '__main__':
     list = parse_csv()
     total = sum(1 for x in list if x!=None)
-    print ("List: ", list)
+    # print ("List: ", list)
     print ("Total DNSSEC: ", total)
 
 
