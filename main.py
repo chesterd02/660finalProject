@@ -6,21 +6,92 @@ import dns.resolver
 import dns.rdatatype
 import csv
 import pickle
+import sqlite3
 
 class myObject:
     def __init__(self,
+                 id,
                  domain,
-                 ds_id,
-                 soa_key,
-                 key_id,
+                 ksk,
+                 zsk,
+                 multiple_ksk,
                  algorithm_number,
-                 algorithm):
+                 algorithm,
+                 tcp):
+        self.id = id
         self.domain = domain
-        self.ds_id = ds_id
-        self.soa_key = soa_key
-        self.key_id = key_id
+        self.ksk = ksk
+        self.zsk = zsk
+        self.multiple_ksk = multiple_ksk
         self.algorithm_number = algorithm_number
         self.algorithm = algorithm
+        self.tcp = tcp
+def clear_table():
+    connection = sqlite3.connect('data.db')
+    cursor = connection.cursor()
+    # sql = '''DROP TABLE IF EXISTS Alexa1M'''    #commented out to prevent accidental removal of the table
+    cursor.execute(sql)
+    connection.commit()
+    connection.close()
+
+def createTable():
+    connection = sqlite3.connect('data.db')
+    cursor = connection.cursor()
+    sql = '''CREATE TABLE Alexa1M
+            (ID INT PRIMARY KEY,
+            DOMAINNAME VARCHAR,
+            KSK INT,
+            ZSK VARCHAR,
+            MULTIPLEKSK INT,
+            ALGORITHMNUMBER INT,
+            ALGORITHM VARCHAR,
+            TCP INT)'''
+
+    cursor.execute(sql)
+    connection.commit()
+    connection.close()
+
+def insertToDatabase(object):
+    connection = sqlite3.connect('data.db')
+    cursor = connection.cursor()
+    myObject = object
+    domain = myObject.domain
+    ksk = myObject.ksk
+    zsk = myObject.zsk
+    multiple_ksk = myObject.multiple_ksk
+    algorithm_number = myObject.algorithm_number
+    algorithm = myObject.algorithm
+    tcp = myObject.tcp
+    id = myObject.id
+
+
+    sql = "INSERT INTO Alexa1M (ID, DOMAINNAME, KSK, ZSK, MULTIPLEKSK, ALGORITHMNUMBER, ALGORITHM, TCP) " \
+        f"VALUES ('{id}'," \
+        f"'{domain}'," \
+        f"'{ksk}'," \
+        f"'{zsk}'," \
+        f"'{multiple_ksk}'," \
+        f"'{algorithm_number}'," \
+        f"'{algorithm}'," \
+        f"'{tcp}')"
+    cursor.execute(sql)
+    connection.commit()
+    connection.close()
+
+def checkDatabase():
+  connection = sqlite3.connect('data.db')
+  cursor = connection.cursor()
+
+  sql = "SELECT * FROM Alexa1M"
+  cursor.execute(sql)
+
+  rows = cursor.fetchall()
+  count = 0
+  for row in rows:
+    print(row)
+    count +=1
+  connection.close()
+  return count
 
 def getKey(soa_string, domain):
     i = 5
@@ -32,24 +103,26 @@ def getKey(soa_string, domain):
         i+=1
     return None
 
-def getquerydata(domain):
-    # domain = 'salesforce.com'
-    key_id = None
+def getquerydata(row):
+    # domain = 'blackboard.com'
+    domain = row[1]
+    id = row[0]
+    ksk = None
+    zsk = None
     algorithm_number = None
     algorithm = None
-    response = None
-    soa_response = None
+    multiple_ksk = False
+    tcp = False
 
     try:
         ds_response = dns.resolver.resolve(domain, dns.rdatatype.DS)  #Delegation Signer (KSK)
         ns_response = dns.resolver.resolve(domain, dns.rdatatype.NS)
     except:
-        return None
+        return
 
-    print ("****DOMAIN****:  ", domain)
     nsname = ns_response.rrset[0].to_text()
-    ds_id = str.split(ds_response.rrset[0].to_text(),' ')[0]
-    print ("**DS_ID: ", ds_id)
+    ksk = str.split(ds_response.rrset[0].to_text(),' ')[0]
+
     # USE GOOGLE AS DEFAULT NSADDR ADDRESS 8.8.8.8
     response = dns.resolver.resolve(nsname, dns.rdatatype.A)
     nsaddr = response.rrset[0].to_text()  # IPv4
@@ -61,19 +134,23 @@ def getquerydata(domain):
         soa_response = dns.query.udp(soa_request, nsaddr, timeout=10)
     except:
         #No DNSSEC data
-        return None
+        return
 
     answer = response.answer
     soa_answer = soa_response.answer
-    soa_signer = soa_answer[1].to_text()
+    if len(soa_answer) < 1:
+        return
+    soa_signer = soa_answer[0].to_text()
+    if "RRSIG" not in soa_signer:
+        try:
+            soa_signer = soa_answer[1].to_text()
+        except:
+            return
     soa_string = str.split(soa_signer, ' ')
-    soa_key = getKey(soa_string, domain)
-    print ("Key to sign SOA: ", soa_key)
-
-    name = dns.name.from_text(domain)
+    zsk = getKey(soa_string, domain)
 
     if len(answer) != 2:
-        print ("DOMAIN AND NSNAME DIDNT HAVE 2 TINGS IN ANSWER: ", domain, " ", nsname)
+        print ("DOMAIN AND NSNAME DIDNT HAVE 2 THINGS IN ANSWER: ", domain, " ", nsname)
         try:
             response = dns.query.tcp(request, nsaddr, timeout=10)
             soa_response = dns.query.tcp(soa_request, nsaddr, timeout=10)
@@ -81,26 +158,26 @@ def getquerydata(domain):
             soa_answer = soa_response.answer
             soa_signer = soa_answer[1].to_text()
             soa_string = str.split(soa_signer, ' ')
-            soa_key = getKey(soa_string, domain)
-            print("Key to sign SOA: ", soa_key)
+            zsk = getKey(soa_string, domain)
+            tcp = True
+
         except:
             print("SOMETHING WENT WRONG THE ANSWER SHOULD HAVE 2 THINGS IN IT")
-            return myObject(domain,
-                     ds_id,
-                     soa_key,
-                     key_id,
+            return myObject(id,
+                     domain,
+                     ksk,
+                     zsk,
+                     multiple_ksk,
                      algorithm_number,
-                     algorithm)
-    # the DNSKEY should be self signed, validate it
-    try:
-        dns.dnssec.validate(answer[0], answer[1], {name: answer[0]})
-    except dns.dnssec.ValidationFailure:
-        print("BE SUSPICIOUS THIS DNSKEY IS NOT SELF SIGNED")
-        # return None
-    # print("WE'RE GOOD, THERE'S A VALID DNSSEC SELF-SIGNED KEY FOR THE QUERY")
-    # print("DOMAIN AND NSNAME WITH DNSSEC: ", domain, " ", nsname)
-    keys = {name: answer[0]}
-    for rrsigset in answer[1]:  # can i make this be answer[0]?
+                     algorithm,
+                     tcp)
+
+    count = 0
+    for rrsigset in answer[1]:
+        count += 1
+        if count >= 2:
+            multiple_ksk = True
+            print ("multiple keys found for domain: " , domain)
         if isinstance(rrsigset, tuple):
             rrsigrdataset = rrsigset[1]
         else:
@@ -109,51 +186,49 @@ def getquerydata(domain):
         algorithm_number = int(str.split(rrsigrdataset.to_text(), ' ')[1])
         algorithm = dns.dnssec.algorithm_to_text(algorithm_number)
 
-        dns.dnssec.validate_rrsig(answer[0], rrsigrdataset, keys)
-        # willFail = dns.dnssec.key_id(answer[0])
-        candidate_key = dns.dnssec._find_candidate_keys(keys, rrsigrdataset)
-        key_id = dns.dnssec.key_id(candidate_key[0])
-        print ("KEYID****: ", key_id)
-
-    #return an object to be put in a sqlite table?
-    # are these the things that we want?  Is this all the data that we need from the queries
-    newObject = myObject(domain,
-                        ds_id,
-                        soa_key,
-                        key_id,
+    newObject = myObject(id,
+                        domain,
+                        ksk,
+                        zsk,
+                        multiple_ksk,
                         algorithm_number,
-                        algorithm)
-    picklestring = pickle.dumps(newObject)
-    # unpickle = pickle.loads(picklestring)
+                        algorithm,
+                        tcp)
+    insertToDatabase(newObject)
 
-    return picklestring
+    # picklestring = pickle.dumps(newObject)
+
+    return
 
 def parse_csv():
     with open('top-1m.csv', newline='') as csvfile:
         dialect = csv.Sniffer().sniff(csvfile.read(1024))
         csvfile.seek(0)
         reader = csv.reader(csvfile, dialect)
-        test_number_to_parse = 1000                    # This number is used for testing on a smaller set of data
-        domain = next(reader)
-        # for row in reader:
-        #     do stuff with row
-        responses = []
+        # test_number_to_parse = 1000                    # This number is used for testing on a smaller set of data
+        # domain = next(reader)
+        # responses = []
+        for row in reader:
+            getquerydata(row)
 
-        while int(domain[0]) != test_number_to_parse:
-            # print ("line: ", domain[0])
-            if int(domain[0]) < 40:
-                domain = next(reader)
-                continue
-            responses.append(getquerydata(domain[1]))
-            domain = next(reader)
-        return responses
+        # while int(domain[0]) != test_number_to_parse:
+        #     # print ("line: ", domain[0])
+        #     if int(domain[0]) < 40:
+        #         domain = next(reader)
+        #         continue
+        #     responses.append(getquerydata(domain[1]))
+        #     domain = next(reader)
+        return
 
 
 if __name__ == '__main__':
-    list = parse_csv()
-    total = sum(1 for x in list if x!=None)
-    # print ("List: ", list)
-    print ("Total DNSSEC: ", total)
+    # clear_table()
+    total = checkDatabase()
+    # createTable()
+    # parse_csv()
+    print ("total", total)
+    # # print ("List: ", list)
+    # print ("Total DNSSEC: ", total)
 
 
 
