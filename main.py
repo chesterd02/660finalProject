@@ -7,6 +7,9 @@ import dns.rdatatype
 import csv
 import pickle
 import sqlite3
+from datapackage import Package
+import numpy as np
+import matplotlib.pyplot as plt
 
 class myObject:
     def __init__(self,
@@ -26,6 +29,7 @@ class myObject:
         self.algorithm_number = algorithm_number
         self.algorithm = algorithm
         self.tcp = tcp
+
 def clear_table():
     connection = sqlite3.connect('data.db')
     cursor = connection.cursor()
@@ -37,7 +41,7 @@ def clear_table():
 def createTable():
     connection = sqlite3.connect('data.db')
     cursor = connection.cursor()
-    sql = '''CREATE TABLE Alexa1M
+    sql = '''CREATE TABLE Top500
             (ID INT PRIMARY KEY,
             DOMAINNAME VARCHAR,
             KSK INT,
@@ -65,7 +69,7 @@ def insertToDatabase(object):
     id = myObject.id
 
 
-    sql = "INSERT INTO Alexa1M (ID, DOMAINNAME, KSK, ZSK, MULTIPLEKSK, ALGORITHMNUMBER, ALGORITHM, TCP) " \
+    sql = "INSERT INTO Top500 (ID, DOMAINNAME, KSK, ZSK, MULTIPLEKSK, ALGORITHMNUMBER, ALGORITHM, TCP) " \
         f"VALUES ('{id}'," \
         f"'{domain}'," \
         f"'{ksk}'," \
@@ -104,7 +108,6 @@ def getKey(soa_string, domain):
     return None
 
 def getquerydata(row):
-    # domain = 'blackboard.com'
     domain = row[1]
     id = row[0]
     ksk = None
@@ -113,6 +116,9 @@ def getquerydata(row):
     algorithm = None
     multiple_ksk = False
     tcp = False
+
+    # request = dns.message.make_query(domain, dns.rdatatype.DNSKEY, want_dnssec=True)
+    # response = dns.resolver.resolve(request, '8.8.8.8', timeout=3)
 
     try:
         ds_response = dns.resolver.resolve(domain, dns.rdatatype.DS)  #Delegation Signer (KSK)
@@ -201,7 +207,7 @@ def getquerydata(row):
     return
 
 def parse_csv():
-    with open('top-1m.csv', newline='') as csvfile:
+    with open('top500.csv', newline='') as csvfile:
         dialect = csv.Sniffer().sniff(csvfile.read(1024))
         csvfile.seek(0)
         reader = csv.reader(csvfile, dialect)
@@ -220,15 +226,155 @@ def parse_csv():
         #     domain = next(reader)
         return
 
+def get_top_level_domains():
+    package = Package('https://datahub.io/core/top-level-domain-names/datapackage.json')
+
+    # print list of all resources:
+    print(package.resource_names)
+
+    # print processed tabular data (if exists any)
+    count = 0
+    for resource in package.resources:
+        if resource.descriptor['datahub']['type'] == 'derived/csv':
+            full_list = resource.read()
+            for item in full_list:
+                tuple = [count, item[0]]
+                getquerydata(tuple)
+                # print (item[0])
+        count +=1
+            # print(resource.read())
+
+def getKSKCount(tableName, quantity):
+    connection = sqlite3.connect('data.db')
+    cursor = connection.cursor()
+    sql = "SELECT KSK, COUNT(KSK) FROM " + tableName + " GROUP BY KSK"
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    connection.close()
+    sortedRows = sorted(rows, key=lambda k: k[1], reverse=True)
+    return sortedRows[:quantity]
+
+def graphKSKDistribution(data):
+    ksk_id, score = zip(*data)
+    x_pos = np.arange(len(ksk_id))
+    plt.bar(x_pos, score)
+    plt.xticks(x_pos, ksk_id)
+    plt.show()
+
+def getZSKCount(tableName, quantity):
+    connection = sqlite3.connect('data.db')
+    cursor = connection.cursor()
+    sql = "SELECT ZSK, COUNT(ZSK) FROM " + tableName + " GROUP BY ZSK"
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    connection.close()
+    sortedRows = sorted(rows, key=lambda k: k[1], reverse=True)
+    return sortedRows[:quantity]
+
+def graphZSKDistribution(data):
+    zsk_id, score = zip(*data)
+    x_pos = np.arange(len(zsk_id))
+    plt.bar(x_pos, score)
+    plt.xticks(x_pos, zsk_id)
+    plt.show()
+
+def getMultipleKSKCount (tableName):
+    connection = sqlite3.connect('data.db')
+    cursor = connection.cursor()
+    sql = "SELECT COUNT(*) FROM " + tableName + " WHERE MULTIPLEKSK='True'"
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    connection.close()
+    return rows[0]
+
+def getTotalCount (tableName):
+    connection = sqlite3.connect('data.db')
+    cursor = connection.cursor()
+    sql = "SELECT COUNT(*) FROM " + tableName + " ORDER BY ID DESC LIMIT 1"
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    connection.close()
+    return rows[0]
+
+def pieChartMultipleKSKs(total, multi_ksks):
+    data = [('singleKSK', (total-multi_ksks)), ('multipleKSK', multi_ksks)]
+    name, amount = zip(*data)
+
+    plt.pie(amount, startangle=90, autopct='%1.0f%%', pctdistance=0.5, textprops={'fontsize': 16})
+
+    plt.legend(name, bbox_to_anchor=(1, 0.75), loc="upper right", fontsize=15,
+               bbox_transform=plt.gcf().transFigure)
+
+    plt.show()
+
+def getAlgorithm(tableName, quantity):
+    connection = sqlite3.connect('data.db')
+    cursor = connection.cursor()
+    sql = "SELECT ALGORITHM, COUNT(ALGORITHM) FROM " + tableName + " GROUP BY ALGORITHM"
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    connection.close()
+    sortedRows = sorted(rows, key=lambda k: k[1], reverse=True)
+    return sortedRows[:quantity]
+
+def graphAlgorithm(data):
+    algorithm, score = zip(*data)
+    x_pos = np.arange(len(algorithm))
+
+    plt.bar(x_pos, score, align='center')
+    plt.xticks(x_pos, algorithm, rotation=45)  # rotation=45?
+    plt.ylabel('Popularity')
+    plt.show()
+
+def getAlgorithmNumber(tableName, quantity):
+    connection = sqlite3.connect('data.db')
+    cursor = connection.cursor()
+    sql = "SELECT ALGORITHMNUMBER, COUNT(ALGORITHMNUMBER) FROM " + tableName + " GROUP BY ALGORITHMNUMBER"
+    cursor.execute(sql)
+    rows = cursor.fetchall()
+    connection.close()
+    sortedRows = sorted(rows, key=lambda k: k[1], reverse=True)
+    return sortedRows[:quantity]
+
+def graphOutdatedAlgorithms(data):
+    algorithm, amount = zip(*data)
+
+    plt.pie(amount, startangle=90, autopct='%1.0f%%', pctdistance=1.1, textprops={'fontsize': 11})
+
+    plt.legend(algorithm, bbox_to_anchor=(1, 0.75), loc="upper right", fontsize=15,
+               bbox_transform=plt.gcf().transFigure)
+
+    plt.show()
 
 if __name__ == '__main__':
     # clear_table()
     total = checkDatabase()
     # createTable()
     # parse_csv()
-    print ("total", total)
+    # getquerydata([1, 'com.'])
+    # print ("total", total)
     # # print ("List: ", list)
     # print ("Total DNSSEC: ", total)
+
+    '''ANALYZE KSK'S'''
+    # graphKSKDistribution(getKSKCount('top500', 10))
+
+    '''ANALYZE ZSK'S'''
+    # graphZSKDistribution(getZSKCount('Alexa1M', 10))
+
+    '''ANALYZE MULTIPLE KSKS'''
+    totalDNSSECDomains = getTotalCount('Alexa1M')[0]
+    # totalDomainsWithMultipleKSKs = getMultipleKSKCount('top500')[0]
+    # pieChartMultipleKSKs(totalDNSSECDomains, totalDomainsWithMultipleKSKs)
+    print ("TOTAL DNSSEC DOMAINS: ", totalDNSSECDomains)
+
+    '''ALGORITHM NUMBER'''
+    # graphAlgorithm(getAlgorithm('Alexa1M', 6))
+
+    '''OUTDATED ALGORITHMS'''
+    # graphOutdatedAlgorithms(getAlgorithmNumber('Alexa1M', 6))
+
+    # top_level_domains = get_top_level_domains()
 
 
 
